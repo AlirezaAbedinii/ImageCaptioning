@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Captioning — Demo</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="card">
+      <h1>Image Captioning</h1>
+      <p class="subtitle">
+        Upload an image and the GAN-refined model will describe it.
+      </p>
+
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="file" accept="image/*" hidden />
+        <span id="hint">Click to choose an image</span>
+        <img id="preview" alt="" />
+      </label>
+
+      <div class="result" id="result" hidden>
+        <span class="label">Caption</span>
+        <p id="caption">…</p>
+      </div>
+
+      <p class="endpoint">Model endpoint: <code id="endpoint"></code></p>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
