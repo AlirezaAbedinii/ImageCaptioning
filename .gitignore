@@ -1,0 +1,30 @@
+# --- Trained weights & large artefacts (distributed separately) -------------
+models/
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.ckpt
+
+# --- Datasets & generated data ----------------------------------------------
+data/
+*.csv
+*.zip
+glove.6B*.txt
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Notebooks --------------------------------------------------------------
+.ipynb_checkpoints/
+
+# --- IDE / OS ---------------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

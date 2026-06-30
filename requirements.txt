@@ -1,0 +1,18 @@
+# Core deep-learning stack (the model was trained on TensorFlow 2.x / Colab GPU)
+tensorflow>=2.8,<2.13
+tensorflow-probability>=0.16
+
+# Data, vision and NLP utilities
+numpy
+pandas
+opencv-python
+Pillow
+scikit-image
+matplotlib
+tqdm
+
+# Captioning-specific
+pycocotools          # MS-COCO caption loading
+nltk                 # BLEU scoring
+gym                  # reinforcement-learning environment
+requests-toolbelt    # multipart parsing for the inference server
