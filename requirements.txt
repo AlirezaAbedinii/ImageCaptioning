@@ -14,5 +14,4 @@ tqdm
 # Captioning-specific
 pycocotools          # MS-COCO caption loading
 nltk                 # BLEU scoring
-gym                  # reinforcement-learning environment
-requests-toolbelt    # multipart parsing for the inference server
+gym>=0.26,<0.27      # reinforcement-learning environment (tested with 0.26.2)
