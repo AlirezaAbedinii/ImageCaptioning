@@ -1,14 +1,11 @@
-"""Network definitions.
+"""Network definitions, as in the notebook.
 
-* ``build_generator``     — the CNN-encoder / LSTM-decoder caption generator
-                            (a classic "merge" architecture). Pre-trained with
-                            MLE, then refined with SCST inside the GAN.
-* ``build_discriminator`` — an RNN that scores an (image-features, caption)
-                            pair as real or fake.
-
-Both architectures are transcribed from the thesis (figures 13 and 21). The
-generator matches the deployed ``final_model_V4.h5`` used by the inference
-server.
+* ``build_generator``     — the LSTM decoder on top of cached InceptionV3
+                            features (a "merge" architecture). Trained with MLE,
+                            then refined with SCST inside the GAN. Matches the
+                            deployed ``final_model_V4.h5``.
+* ``build_discriminator`` — an LSTM that scores an (image-features, caption)
+                            pair as real (1) or fake/mismatched (0).
 """
 from __future__ import annotations
 
@@ -28,9 +25,8 @@ from .config import CONFIG
 
 def build_generator(num_words: int = CONFIG.num_words,
                     max_length: int = CONFIG.max_length,
-                    embedding_dim: int = CONFIG.embedding_dim,
-                    embedding_matrix=None) -> Model:
-    """CNN-encoder + LSTM-decoder caption model (thesis fig. 13).
+                    embedding_dim: int = CONFIG.embedding_dim) -> Model:
+    """LSTM caption decoder.
 
     Inputs
     ------
@@ -43,37 +39,35 @@ def build_generator(num_words: int = CONFIG.num_words,
     """
     # Image branch
     inputs1 = Input(shape=(2048,))
-    f_layer1 = Dropout(0.5)(inputs1)
-    f_layer2 = Dense(512, activation="relu")(f_layer1)
+    fe1 = Dropout(0.5)(inputs1)
+    fe2 = Dense(512, activation="relu")(fe1)
 
     # Sequence branch
     inputs2 = Input(shape=(max_length,))
-    s_layer1 = Embedding(num_words, embedding_dim, mask_zero=True)(inputs2)
-    s_layer2 = Dropout(0.5)(s_layer1)
-    s_layer3 = LSTM(512)(s_layer2)
+    se1 = Embedding(num_words, embedding_dim, mask_zero=True)(inputs2)
+    se2 = Dropout(0.5)(se1)
+    se3 = LSTM(512)(se2)
 
     # Merge + classify
-    decoder1 = add([f_layer2, s_layer3])
+    decoder1 = add([fe2, se3])
     decoder2 = Dense(256, activation="relu")(decoder1)
     outputs = Dense(num_words, activation="softmax")(decoder2)
 
-    model = Model(inputs=[inputs1, inputs2], outputs=outputs)
-
-    if embedding_matrix is not None:
-        # Use the GloVe matrix and freeze the embedding layer.
-        model.layers[2].set_weights([embedding_matrix])
-        model.layers[2].trainable = False
-    return model
+    return Model(inputs=[inputs1, inputs2], outputs=outputs)
 
 
-def build_discriminator(num_words: int = CONFIG.num_words,
+def build_discriminator(generator: Model | None = None,
+                        num_words: int = CONFIG.num_words,
                         max_length: int = CONFIG.max_length,
                         embedding_dim: int = CONFIG.embedding_dim) -> Model:
-    """RNN discriminator (thesis fig. 21).
+    """LSTM discriminator.
 
-    Scores an (image-features, caption) pair in [0, 1]: 1 = real human caption,
-    0 = generated / mismatched. Pre-trained with binary cross-entropy on real,
-    fake (generator) and "wrong" (mismatched) pairs.
+    The image feature vector is fed to the LSTM as the first time step,
+    followed by the embedded caption words. This is why ``embedding_dim``
+    equals the 2048-d feature size.
+
+    If ``generator`` is given, its word embedding is copied into the
+    discriminator and frozen, as in the notebook.
     """
     img_features = Input(shape=(1, 2048))
     caption = Input(shape=(max_length,))
@@ -83,7 +77,18 @@ def build_discriminator(num_words: int = CONFIG.num_words,
 
     disc_lstm = LSTM(512)(disc_input)
     disc_dense = Dense(512, activation="leaky_relu")(disc_lstm)
-    disc_dropout = Dropout(0.4)(disc_dense)
-    outputs = Dense(1, activation="sigmoid")(disc_dropout)
+    # The notebook also creates Dropout(0.4) here but never applies it to a
+    # tensor, so it is not part of the trained model and is omitted.
+    outputs = Dense(1, activation="sigmoid")(disc_dense)
 
-    return Model(inputs=[img_features, caption], outputs=outputs)
+    disc = Model(inputs=[img_features, caption], outputs=outputs)
+
+    if generator is not None:
+        disc_emb = _first_embedding(disc)
+        disc_emb.set_weights(_first_embedding(generator).get_weights())
+        disc_emb.trainable = False
+    return disc
+
+
+def _first_embedding(model: Model) -> Embedding:
+    return next(layer for layer in model.layers if isinstance(layer, Embedding))

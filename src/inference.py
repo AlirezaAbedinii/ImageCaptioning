@@ -28,5 +28,6 @@ def generate_caption(tokenizer, picture: np.ndarray, model,
         if new_word == "endseq":
             break
 
-    caption = generated_text.replace("startseq", "").replace(" endseq", "")
-    return caption.strip()
+    # Kept as in the notebook (including the leading space), so BLEU scores
+    # computed on this output match the reported ones.
+    return generated_text.replace("startseq", "").replace(" endseq", "")

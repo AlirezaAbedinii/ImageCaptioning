@@ -62,7 +62,7 @@ def encode(img: np.ndarray) -> np.ndarray:
 
 def caption_for_image(img: np.ndarray) -> str:
     picture = encode(img).reshape((1, CONFIG.feature_dim))
-    return generate_caption(tokenizer, picture, final_model, CONFIG.max_length)
+    return generate_caption(tokenizer, picture, final_model, CONFIG.max_length).strip()
 
 
 class CaptioningHandler(BaseHTTPRequestHandler):
