@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import os
 import pickle
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import cv2
 import numpy as np
@@ -60,9 +61,15 @@ def encode(img: np.ndarray) -> np.ndarray:
     return np.reshape(fea_vec, fea_vec.shape[1])
 
 
+# Requests are served on separate threads (browsers keep idle connections open,
+# which would block a single-threaded server); the models run one at a time.
+_model_lock = threading.Lock()
+
+
 def caption_for_image(img: np.ndarray) -> str:
-    picture = encode(img).reshape((1, CONFIG.feature_dim))
-    return generate_caption(tokenizer, picture, final_model, CONFIG.max_length)
+    with _model_lock:
+        picture = encode(img).reshape((1, CONFIG.feature_dim))
+        return generate_caption(tokenizer, picture, final_model, CONFIG.max_length).strip()
 
 
 class CaptioningHandler(BaseHTTPRequestHandler):
@@ -75,32 +82,47 @@ class CaptioningHandler(BaseHTTPRequestHandler):
                          "GET, POST, OPTIONS")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
 
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+    def do_OPTIONS(self):
+        # CORS preflight: the page posts with Content-Type image/*, which
+        # browsers do not send without first getting this response.
+        self.send_response(204)
+        self._cors_headers(0)
         self.end_headers()
-        self.wfile.write(b"Image captioning server is running.")
+
+    def do_GET(self):
+        self._send_text(200, "Image captioning server is running.")
+
+    def _send_text(self, status: int, text: str) -> None:
+        body = text.encode()
+        self.send_response(status)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self._cors_headers(len(body))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
-        length = int(self.headers["content-length"])
+        length = int(self.headers.get("content-length", 0))
         image_bytes = self.rfile.read(length)
 
         image_numpy = np.frombuffer(image_bytes, dtype="uint8")
-        img = cv2.imdecode(image_numpy, cv2.IMREAD_COLOR)
-        img = cv2.resize(img, (150, 150), interpolation=cv2.INTER_AREA)
+        img = cv2.imdecode(image_numpy, cv2.IMREAD_COLOR) if length else None
+        if img is None:
+            self._send_text(400, "Could not decode the uploaded file as an image.")
+            return
+        # InceptionV3 expects 299x299 inputs, as used when caching training features.
+        img = cv2.resize(img, CONFIG.inception_input, interpolation=cv2.INTER_AREA)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        caption = caption_for_image(img)
-        response = caption.encode()
-
-        self.send_response(200)
-        self._cors_headers(len(response))
-        self.end_headers()
-        self.wfile.write(response)
+        try:
+            caption = caption_for_image(img)
+        except Exception as exc:  # keep serving after a bad request
+            self._send_text(500, f"Captioning failed: {exc}")
+            return
+        self._send_text(200, caption)
 
 
 def main() -> None:
-    server = HTTPServer((HOST_NAME, SERVER_PORT), CaptioningHandler)
+    server = ThreadingHTTPServer((HOST_NAME, SERVER_PORT), CaptioningHandler)
     print(f"Server started at http://{HOST_NAME}:{SERVER_PORT}")
     try:
         server.serve_forever()

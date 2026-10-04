@@ -21,7 +21,8 @@ with reinforcement learning to fool the discriminator *and* maximise BLEU.
 
 ## Demo
 
-Captions produced on **held-out** COCO images (BLEU in parentheses):
+The best-scoring captions on the held-out test images (the thesis's "very good"
+group, BLEU > 0.8). A typical caption scores around 0.55–0.6.
 
 ![Result gallery](assets/demo/gallery.png)
 
@@ -36,6 +37,12 @@ Captions produced on **held-out** COCO images (BLEU in parentheses):
 **Average test-set BLEU ≈ 0.57** (~10 % over the plain encoder–decoder baseline).
 More examples in [`assets/demo/`](assets/demo/README.md).
 
+> **How to read these scores:** BLEU here is computed with NLTK's
+> `sentence_bleu` on raw strings, which compares **character** n-grams rather than
+> words (see [`src/metrics.py`](src/metrics.py)). The numbers are consistent
+> within this project, but they are **not** comparable to the word-level BLEU-4
+> reported in captioning papers.
+
 ---
 
 ## Table of contents
@@ -43,6 +50,7 @@ More examples in [`assets/demo/`](assets/demo/README.md).
 - [Highlights](#highlights)
 - [How it works](#how-it-works)
 - [Repository structure](#repository-structure)
+- [Dataset](#dataset)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Interactive dashboard](#interactive-dashboard)
@@ -83,7 +91,7 @@ More examples in [`assets/demo/`](assets/demo/README.md).
 1. **Encoder** — InceptionV3 with its classification head removed maps each image
    to a 2048-d vector ([`src/features.py`](src/features.py)).
 2. **Generator (decoder)** — a "merge" model: the image vector and the partial
-   caption (GloVe-embedded → LSTM) are added and projected to a softmax over the
+   caption (learned embedding → LSTM) are added and projected to a softmax over the
    vocabulary ([`src/model.py`](src/model.py)). Pre-trained with maximum
    likelihood (categorical cross-entropy).
 3. **Discriminator** — an LSTM that scores an `(image-features, caption)` pair as
@@ -94,19 +102,22 @@ More examples in [`assets/demo/`](assets/demo/README.md).
    periodically refreshed.
 
 A full walk-through of the method (with the equations) is in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). How this implementation differs
+from the paper (one RNN discriminator, no ensemble, frozen CNN, no attention) is
+covered in [Relation to the paper](docs/ARCHITECTURE.md#8-relation-to-the-paper).
 
 ## Repository structure
 
 ```
 ImageCaptioning/
-├── Image_Captioning.ipynb     # original end-to-end notebook (data prep & exploration)
+├── Image_Captioning.ipynb     # complete Colab notebook (full pipeline, with outputs)
 ├── src/                       # refactored, documented pipeline
 │   ├── config.py              #   paths + hyper-parameters
 │   ├── data.py                #   COCO loading, train/test split, dataframes
 │   ├── features.py            #   InceptionV3 encoder + 2048-d feature caching
-│   ├── vocab.py               #   tokenizer + GloVe embedding matrix
+│   ├── vocab.py               #   caption dictionaries + tokenizer
 │   ├── model.py               #   generator (decoder) + discriminator
+│   ├── metrics.py             #   BLEU (evaluation and RL reward)
 │   ├── rl_env.py              #   Gym environment for SCST
 │   ├── train.py               #   MLE pre-training + GAN/SCST loop
 │   └── inference.py           #   greedy caption decoding
@@ -119,6 +130,33 @@ ImageCaptioning/
 └── LICENSE
 ```
 
+## Dataset
+
+The project uses only the **MS-COCO 2017 validation split**: 5 000 images with
+5–6 human captions each. The full training split was too large for a free
+Colab instance. The images are split randomly 80/20 into **4 000 train /
+1 000 test** images.
+
+| Download | Link | What is used |
+| -------- | ---- | ------------ |
+| `val2017.zip` (~1 GB) | <http://images.cocodataset.org/zips/val2017.zip> | the 5 000 images |
+| `annotations_trainval2017.zip` | <http://images.cocodataset.org/annotations/annotations_trainval2017.zip> | `annotations/captions_val2017.json` |
+
+Unzip both into one folder:
+
+```
+data/
+├── annotations/captions_val2017.json
+├── val2017/            # 5 000 .jpg files
+├── Train/              # created by the train/test split
+└── Test/               # created by the train/test split
+```
+
+[`src/config.py`](src/config.py) expects this layout under `data/` (override it
+with `IC_DATA_DIR`). The notebook's paths point at Google Drive. Edit the
+variables in its *Globals* section before running it; the notebook's first cell
+lists the one-off steps (split, feature caching, …) to run on a fresh setup.
+
 ## Installation
 
 ```bash
@@ -128,14 +166,9 @@ python -m venv .venv && source .venv/bin/activate   # optional
 pip install -r requirements.txt
 ```
 
-You will also need:
-- **MS-COCO 2017** captions + images (the project uses the `val2017` split) under
-  `data/` — see [`src/config.py`](src/config.py) for the expected paths.
-- **GloVe** embeddings: `glove.6B.100d.txt`
-  (from <https://nlp.stanford.edu/data/glove.6B.zip>).
-- **Trained weights** (`final_model_V4.h5`, `flat_train_caps.pickle`) in `models/`
-  to run inference without retraining. These are large and are **not** stored in
-  git; they are available on request.
+To run inference without retraining you also need the **trained weights**
+(`final_model_V4.h5`, `flat_train_caps.pickle`) in `models/`. They are too large
+for git and are available on request.
 
 ## Usage
 
@@ -177,10 +210,11 @@ encodes it, decodes a caption greedily and returns the text.
 
 ## Notebook
 
-[`Image_Captioning.ipynb`](Image_Captioning.ipynb) is the original Colab
-notebook covering dataset loading, the memory-efficient feature-caching strategy,
-vocabulary building and exploration. The `src/` package is the cleaned, modular
-version of that work — the notebook is kept for reference and reproducibility.
+[`Image_Captioning.ipynb`](Image_Captioning.ipynb) is the complete Colab
+notebook used for the thesis. It covers data preparation, feature caching, the
+MLE decoder, discriminator pre-training, GAN/SCST training and evaluation, and
+keeps its original outputs. Its first cell explains the dataset and the one-off
+setup steps. The `src/` package is the same pipeline as importable modules.
 
 ## Citation
 
@@ -197,8 +231,7 @@ Base paper:
 ```
 
 Key building blocks: SCST (Rennie *et al.*, CVPR 2017), BLEU (Papineni *et al.*,
-2002), MS-COCO (Lin *et al.*, 2014), InceptionV3 (Szegedy *et al.*, 2016),
-GloVe (Pennington *et al.*, 2014).
+2002), MS-COCO (Lin *et al.*, 2014), InceptionV3 (Szegedy *et al.*, 2016).
 
 ## Author
 

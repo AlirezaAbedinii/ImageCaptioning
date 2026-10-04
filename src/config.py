@@ -34,14 +34,16 @@ TRAIN_DF = os.path.join(DATA_DIR, "train_data.csv")
 TEST_DF = os.path.join(DATA_DIR, "test_data.csv")
 
 # Cached 2048-d InceptionV3 feature vectors ({image_url: np.ndarray}).
-TRAIN_FEATURES = os.path.join(DATA_DIR, "train_features.pkl")
+TRAIN_FEATURES = os.path.join(DATA_DIR, "images1.pkl")
+TEST_FEATURES = os.path.join(DATA_DIR, "test_images.pkl")
 
-# GloVe embeddings (glove.6B.100d.txt -> https://nlp.stanford.edu/data/glove.6B.zip).
-GLOVE_FILE = os.path.join(DATA_DIR, "glove.6B.100d.txt")
+# Captions produced by the MLE generator, used to pre-train the discriminator.
+FAKE_CAPTIONS = os.path.join(DATA_DIR, "fake_captions.pkl")
 
 # Trained artefacts (kept out of git — see .gitignore).
 MODELS_DIR = _env("IC_MODELS_DIR", "models")
 GENERATOR_WEIGHTS = os.path.join(MODELS_DIR, "final_model_V4.h5")
+DISCRIMINATOR_WEIGHTS = os.path.join(MODELS_DIR, "Disc_V1.h5")
 TOKENIZER_PICKLE = os.path.join(MODELS_DIR, "tokenizer.pickle")
 FLAT_CAPTIONS_PICKLE = os.path.join(MODELS_DIR, "flat_train_caps.pickle")
 
@@ -53,7 +55,7 @@ FLAT_CAPTIONS_PICKLE = os.path.join(MODELS_DIR, "flat_train_caps.pickle")
 class Config:
     # Vocabulary / sequences
     num_words: int = 2075          # vocabulary size kept by the tokenizer
-    embedding_dim: int = 100       # GloVe-100d
+    embedding_dim: int = 2048      # learned word embedding (same size as image features)
     max_length: int = 16           # maximum caption length (in tokens)
 
     # Image encoder
@@ -76,7 +78,7 @@ class Config:
     mini_batch: int = 8            # generated samples examined per GAN step
     disc_data_batch: int = 128     # samples produced to refresh the discriminator
     disc_training_batch: int = 8   # discriminator batch size during GAN
-    disc_inner_epochs: int = 4     # discriminator epochs per GAN step
+    disc_inner_epochs: int = 4     # discriminator epochs per GAN step (thesis run; the notebook's last run used 1)
     lambda_val: float = 0.2        # reward mix: r = λ·D + (1-λ)·BLEU
     scst_lr: float = 5e-5          # Adam learning rate for the SCST update
     scst_clip: float = 0.5         # gradient clip value
